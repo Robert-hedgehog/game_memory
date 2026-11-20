@@ -4,6 +4,8 @@ import android.os.Bundle
 import android.view.View
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.delay
@@ -22,8 +24,19 @@ class MainActivity : AppCompatActivity() {
         "card_8" to R.drawable.card_8
     )
 
+    private var firstCard: ImageView? = null
+    private var isBusy = false
+    private var matchedPairsCount = 0
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        startNewGame()
+    }
+
+    private fun startNewGame() {
+        matchedPairsCount = 0
+        firstCard = null
+        isBusy = false
 
         val rootLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -53,7 +66,7 @@ class MainActivity : AppCompatActivity() {
                     scaleType = ImageView.ScaleType.FIT_CENTER
                     setPadding(12, 12, 12, 12)
                     tag = shuffledTags[i]
-                    setOnClickListener(colorListener)
+                    setOnClickListener(cardClickListener)
                 }
             )
         }
@@ -79,21 +92,65 @@ class MainActivity : AppCompatActivity() {
         setContentView(rootLayout)
     }
 
-    private suspend fun flipCardWithDelay(card: ImageView) {
-        val tagName = card.tag as? String ?: return
-        val faceResId = cardFaces[tagName] ?: return
+    private val cardClickListener = View.OnClickListener { view ->
+        val clickedCard = view as? ImageView ?: return@OnClickListener
 
-        card.isClickable = false
-        card.setImageResource(faceResId)
-        delay(1000)
-        card.setImageResource(R.drawable.card_back)
-        card.isClickable = true
+        if (isBusy || clickedCard == firstCard) {
+            return@OnClickListener
+        }
+
+        val tag = clickedCard.tag as? String ?: return@OnClickListener
+        val faceResId = cardFaces[tag] ?: return@OnClickListener
+
+        clickedCard.setImageResource(faceResId)
+
+        if (firstCard == null) {
+            firstCard = clickedCard
+        } else {
+            val secondCard = clickedCard
+            lifecycleScope.launch {
+                checkPair(firstCard!!, secondCard)
+            }
+        }
     }
 
-    private val colorListener = View.OnClickListener { view ->
-        val card = view as? ImageView ?: return@OnClickListener
-        lifecycleScope.launch {
-            flipCardWithDelay(card)
+    private suspend fun checkPair(card1: ImageView, card2: ImageView) {
+        isBusy = true
+
+        val tag1 = card1.tag as? String
+        val tag2 = card2.tag as? String
+
+        if (tag1 == tag2) {
+            delay(500)
+            card1.visibility = View.INVISIBLE
+            card2.visibility = View.INVISIBLE
+
+            matchedPairsCount++
+
+            if (matchedPairsCount == 8) {
+                showWinDialog()
+            }
+        } else {
+            delay(1000)
+            card1.setImageResource(R.drawable.card_back)
+            card2.setImageResource(R.drawable.card_back)
         }
+
+        firstCard = null
+        isBusy = false
+    }
+
+    private fun showWinDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Победа!")
+            .setMessage("Поздравляем! Вы нашли все пары карт!")
+            .setCancelable(false)
+            .setPositiveButton("Сыграть снова") { _, _ ->
+                startNewGame()
+            }
+            .setNegativeButton("Выход") { _, _ ->
+                finish()
+            }
+            .show()
     }
 }
